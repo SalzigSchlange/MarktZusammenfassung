@@ -1,4 +1,5 @@
 name: Financial-Agent
+
 on:
   schedule:
     - cron: '0 14 * * *' # 2 PM UTC
@@ -10,32 +11,36 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
-      - uses: actions/setup-python@v5
+          fetch-depth: 0 # Necessary for the rebase to work
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install
+
+      - name: Install Dependencies
         run: pip install edgartools OpenDartReader requests google-generativeai pandas
-      - name: Run
+
+      - name: Run Agent
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python main.py
-      - name: Commit State
+
+      - name: Commit and Push State
         run: |
           git config --global user.name "Agent-Bot"
           git config --global user.email "bot@github.com"
           
-          # Fetch the latest from GitHub so the bot is 'in sync'
-          git fetch origin main
-          git checkout main
+          # This handles the conflict by putting the DB on top of your recent code push
+          git pull origin main --rebase
           
-          # Add the changes
           git add processed_filings.db
-          
-          # Only commit if something actually changed
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update state [skip ci]" && git push origin main)
+          git commit -m "Update state [skip ci]" || echo "No changes to commit"
+          git push origin main
