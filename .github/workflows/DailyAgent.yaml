@@ -1,4 +1,5 @@
 name: Financial-Agent
+
 on:
   workflow_dispatch:
   schedule:
@@ -8,23 +9,25 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Restore Database Cache
+      - name: Restore Database
         uses: actions/cache@v4
         with:
           path: processed_filings.db
-          key: ${{ runner.os }}-finance-db-${{ github.run_id }}
+          # The key changes every run (using run_id), but it always 
+          # looks for the most recent one starting with 'finance-db-'
+          key: finance-db-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-finance-db-
+            finance-db-
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install
+      - name: Install Dependencies
         run: pip install edgartools OpenDartReader requests google-genai pandas
 
       - name: Run Agent
@@ -35,10 +38,9 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python main.py
 
-      # Instead of committing to Git, we save the DB as an 'Artifact' 
-      # so you can download it from the GitHub UI anytime.
+      # This saves the DB as a downloadable file on the Action page
       - name: Upload Database Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: finance-database
+          name: financial-database
           path: processed_filings.db
