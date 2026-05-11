@@ -1,5 +1,5 @@
 edgartools
 OpenDartReader
-google-generativeai
+google-genai
 requests
 pandas

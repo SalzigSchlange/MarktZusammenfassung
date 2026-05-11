@@ -8,7 +8,7 @@ from email.message import EmailMessage
 from edgar import set_identity, get_filings
 import OpenDartReader
 import requests
-import google.generativeai as genai
+import google.genai as genai
 
 # 1. INITIALIZATION
 set_identity(os.getenv('EMAIL_USER'))
@@ -50,7 +50,7 @@ def get_summary(text, market):
 # 3. THE DISCOVERY
 def main():
     init_db()
-    today = date.today().strftime('%Y-%m-%d')
+    today = "2026-05-08"
     digest = []
 
     # US Sweep (EDGAR)
