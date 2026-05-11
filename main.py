@@ -8,13 +8,13 @@ from email.message import EmailMessage
 from edgar import set_identity, get_filings
 import OpenDartReader
 import requests
-import google.genai as genai
+from google import genai  # Updated import for 2026 SDK
 
 # 1. INITIALIZATION
 set_identity(os.getenv('EMAIL_USER'))
-genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+# New Client initialization for google-genai
+client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 dart = OpenDartReader(os.getenv('DART_API_KEY'))
-model = genai.GenerativeModel('gemini-1.5-flash')
 
 def init_db():
     conn = sqlite3.connect('processed_filings.db')
@@ -42,46 +42,62 @@ def get_summary(text, market):
     TEXT: {text[:30000]}
     """
     try:
-        response = model.generate_content(prompt)
+        # Updated syntax for google-genai SDK
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
+        )
         return response.text
-    except:
+    except Exception as e:
+        print(f"AI Error: {e}")
         return "Summary failed."
 
 # 3. THE DISCOVERY
 def main():
     init_db()
+    # Hardcoded to Friday for this test as requested
     today = "2026-05-08"
     digest = []
+    print(f"Starting sweep for {today}...")
 
     # US Sweep (EDGAR)
-    us_filings = get_filings(filing_date=today, form=["10-K", "10-Q"])
-    for f in us_filings:
-        if is_new(f.accession_no):
-            summary = get_summary(f.markdown(), "US")
-            digest.append(f"US: {f.company} ({f.ticker})\n{summary}")
-            mark_done(f.accession_no)
+    try:
+        us_filings = get_filings(filing_date=today, form=["10-K", "10-Q"])
+        for f in us_filings:
+            if is_new(f.accession_no):
+                print(f"Processing US: {f.company}")
+                summary = get_summary(f.markdown(), "US")
+                digest.append(f"US: {f.company} ({f.ticker})\n{summary}")
+                mark_done(f.accession_no)
+    except Exception as e:
+        print(f"EDGAR Error: {e}")
 
-    # Japan Sweep (EDINET) - Simple daily check
-    jp_url = f"https://disclosure.edinet-fsa.go.jp/api/v2/documents.json?date={today}&type=2"
-    jp_res = requests.get(jp_url).json()
-    for doc in jp_res.get('results', []):
-        if doc.get('docTypeCode') in ['120', '140'] and is_new(doc['docID']):
-            # For POC, we just summarize the description; full download needs type=1
-            digest.append(f"JP: {doc['filerName']}\n{doc['docDescription']}")
-            mark_done(doc['docID'])
+    # Japan Sweep (EDINET)
+    try:
+        jp_url = f"https://disclosure.edinet-fsa.go.jp/api/v2/documents.json?date={today}&type=2"
+        jp_res = requests.get(jp_url).json()
+        for doc in jp_res.get('results', []):
+            if doc.get('docTypeCode') in ['120', '140'] and is_new(doc['docID']):
+                digest.append(f"JP: {doc['filerName']}\n{doc['docDescription']}")
+                mark_done(doc['docID'])
+    except Exception as e:
+        print(f"EDINET Error: {e}")
 
     # Korea Sweep (DART)
     try:
         kr_date = today.replace("-", "")
-        kr_filings = dart.list(start=kr_date, end=kr_date, pblntf_detail_ty='a001') # Annual
-        for _, row in kr_filings.iterrows():
-            if is_new(row['rcept_no']):
-                digest.append(f"KR: {row['corp_name']}\nAnnual Report Filed.")
-                mark_done(row['rcept_no'])
-    except: pass
+        kr_filings = dart.list(start=kr_date, end=kr_date, pblntf_detail_ty='a001')
+        if kr_filings is not None:
+            for _, row in kr_filings.iterrows():
+                if is_new(row['rcept_no']):
+                    digest.append(f"KR: {row['corp_name']}\nAnnual Report Filed.")
+                    mark_done(row['rcept_no'])
+    except Exception as e:
+        print(f"DART Error: {e}")
 
     # 4. THE EMAIL
     if digest:
+        print(f"Found {len(digest)} items. Sending email...")
         msg = EmailMessage()
         msg.set_content("\n\n---\n\n".join(digest))
         msg['Subject'] = f"Daily Financial Digest - {today}"
@@ -91,6 +107,9 @@ def main():
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(os.getenv('EMAIL_USER'), os.getenv('EMAIL_PASSWORD'))
             smtp.send_message(msg)
+        print("Email sent successfully.")
+    else:
+        print("No new filings to report today.")
 
 if __name__ == "__main__":
     main()
