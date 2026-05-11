@@ -1,5 +1,4 @@
 name: Financial-Agent
-
 on:
   workflow_dispatch:
   schedule:
@@ -11,10 +10,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Restore Database Cache
+        uses: actions/cache@v4
         with:
-          # THIS is where your token is activated
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0
+          path: processed_filings.db
+          key: ${{ runner.os }}-finance-db-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-finance-db-
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -32,17 +35,10 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python main.py
 
-      - name: Force Sync State
-        run: |
-          git config --global user.name "Agent-Bot"
-          git config --global user.email "bot@github.com"
-          
-          # This ensures we are on the right branch and have the latest
-          git checkout main
-          git pull origin main --rebase
-          
-          git add processed_filings.db
-          git commit -m "Update DB [skip ci]" || echo "No changes"
-          
-          # Pushing with the PAT-authenticated remote
-          git push origin main
+      # Instead of committing to Git, we save the DB as an 'Artifact' 
+      # so you can download it from the GitHub UI anytime.
+      - name: Upload Database Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: finance-database
+          path: processed_filings.db
