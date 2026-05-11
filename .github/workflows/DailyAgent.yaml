@@ -1,9 +1,8 @@
 name: Financial-Agent
-
 on:
-  schedule:
-    - cron: '0 14 * * *' # 2 PM UTC
   workflow_dispatch:
+  schedule:
+    - cron: '0 14 * * *'
 
 jobs:
   run:
@@ -11,21 +10,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0 # Necessary for the rebase to work
+          fetch-depth: 0 # Important for rebase
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
-        run: pip install edgartools OpenDartReader requests google-generativeai pandas
+      - name: Install
+        run: pip install edgartools OpenDartReader requests google-genai pandas
 
-      - name: Run Agent
+      - name: Run
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
@@ -33,14 +30,12 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python main.py
 
-      - name: Commit and Push State
+      - name: Commit State
         run: |
           git config --global user.name "Agent-Bot"
           git config --global user.email "bot@github.com"
-          
-          # This handles the conflict by putting the DB on top of your recent code push
-          git pull origin main --rebase
-          
           git add processed_filings.db
-          git commit -m "Update state [skip ci]" || echo "No changes to commit"
+          # Pull changes you pushed locally, then put the new DB on top
+          git pull origin main --rebase
+          git commit -m "Update state [skip ci]" || echo "No changes"
           git push origin main

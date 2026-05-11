@@ -1,6 +1,7 @@
 import os
 import smtplib
 import sqlite3
+import time
 from datetime import date
 from email.message import EmailMessage
 
@@ -8,11 +9,10 @@ from email.message import EmailMessage
 from edgar import set_identity, get_filings
 import OpenDartReader
 import requests
-from google import genai  # Updated import for 2026 SDK
+from google import genai  # Corrected 2026 SDK
 
 # 1. INITIALIZATION
 set_identity(os.getenv('EMAIL_USER'))
-# New Client initialization for google-genai
 client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 dart = OpenDartReader(os.getenv('DART_API_KEY'))
 
@@ -33,74 +33,68 @@ def mark_done(filing_id):
     conn.commit()
     conn.close()
 
-# 2. THE SUMMARIZER
 def get_summary(text, market):
-    prompt = f"""
-    Summary of {market} financial report. 
-    One paragraph in English. Focus on Revenue, Net Income, and Outlook.
-    If you spot anything unusual, mention it.
-    TEXT: {text[:30000]}
-    """
     try:
-        # Updated syntax for google-genai SDK
         response = client.models.generate_content(
             model="gemini-1.5-flash",
-            contents=prompt
+            contents=f"Summarize this {market} filing in one English paragraph. Focus on Revenue, Net Income, and Outlook. If there is anything unusual also mention that: {text[:30000]}"
         )
         return response.text
     except Exception as e:
-        print(f"AI Error: {e}")
-        return "Summary failed."
+        print(f"AI Error ({market}): {e}")
+        return "Summary generation failed."
 
-# 3. THE DISCOVERY
 def main():
     init_db()
-    # Hardcoded to Friday for this test as requested
-    today = "2026-05-08"
+    # Using Friday for the first successful test run
+    target_date = "2026-05-08" 
     digest = []
-    print(f"Starting sweep for {today}...")
+    print(f"Starting Global Sweep for {target_date}...")
 
-    # US Sweep (EDGAR)
+    # --- MARKET 1: US (EDGAR) ---
     try:
-        us_filings = get_filings(filing_date=today, form=["10-K", "10-Q"])
+        us_filings = get_filings(filing_date=target_date, form=["10-K", "10-Q"])
         for f in us_filings:
             if is_new(f.accession_no):
-                print(f"Processing US: {f.company}")
-                summary = get_summary(f.markdown(), "US")
-                digest.append(f"US: {f.company} ({f.ticker})\n{summary}")
+                print(f"Summarizing US: {f.company}...")
+                digest.append(f"US: {f.company} ({f.ticker})\n{get_summary(f.markdown(), 'US')}")
                 mark_done(f.accession_no)
+                time.sleep(2) # Avoid rate limits
     except Exception as e:
         print(f"EDGAR Error: {e}")
 
-    # Japan Sweep (EDINET)
+    # --- MARKET 2: JAPAN (EDINET) ---
     try:
-        jp_url = f"https://disclosure.edinet-fsa.go.jp/api/v2/documents.json?date={today}&type=2"
+        jp_url = f"https://disclosure.edinet-fsa.go.jp/api/v2/documents.json?date={target_date}&type=2"
         jp_res = requests.get(jp_url).json()
         for doc in jp_res.get('results', []):
             if doc.get('docTypeCode') in ['120', '140'] and is_new(doc['docID']):
-                digest.append(f"JP: {doc['filerName']}\n{doc['docDescription']}")
+                print(f"Summarizing JP: {doc['filerName']}...")
+                # In POC, we summarize description; full text requires type=1 download
+                digest.append(f"JP: {doc['filerName']}\nForm: {doc['docDescription']}")
                 mark_done(doc['docID'])
     except Exception as e:
         print(f"EDINET Error: {e}")
 
-    # Korea Sweep (DART)
+    # --- MARKET 3: S. KOREA (DART) ---
     try:
-        kr_date = today.replace("-", "")
+        kr_date = target_date.replace("-", "")
         kr_filings = dart.list(start=kr_date, end=kr_date, pblntf_detail_ty='a001')
-        if kr_filings is not None:
+        if kr_filings is not None and not kr_filings.empty:
             for _, row in kr_filings.iterrows():
                 if is_new(row['rcept_no']):
-                    digest.append(f"KR: {row['corp_name']}\nAnnual Report Filed.")
+                    print(f"Summarizing KR: {row['corp_name']}...")
+                    digest.append(f"KR: {row['corp_name']}\nForm: {row['report_nm']}")
                     mark_done(row['rcept_no'])
     except Exception as e:
         print(f"DART Error: {e}")
 
-    # 4. THE EMAIL
+    # --- 4. DELIVERY ---
     if digest:
-        print(f"Found {len(digest)} items. Sending email...")
+        print(f"Digest compiled ({len(digest)} items). Sending email...")
         msg = EmailMessage()
-        msg.set_content("\n\n---\n\n".join(digest))
-        msg['Subject'] = f"Daily Financial Digest - {today}"
+        msg.set_content("\n\n" + "="*30 + "\n\n".join(digest))
+        msg['Subject'] = f"Global Financial Digest - {target_date}"
         msg['From'] = os.getenv('EMAIL_USER')
         msg['To'] = os.getenv('EMAIL_USER')
 
@@ -109,7 +103,7 @@ def main():
             smtp.send_message(msg)
         print("Email sent successfully.")
     else:
-        print("No new filings to report today.")
+        print("No new filings found across all markets.")
 
 if __name__ == "__main__":
     main()
