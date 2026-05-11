@@ -1,0 +1,5 @@
+edgartools
+OpenDartReader
+google-generativeai
+requests
+pandas
