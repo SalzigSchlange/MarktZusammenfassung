@@ -29,6 +29,13 @@ jobs:
         run: |
           git config --global user.name "Agent-Bot"
           git config --global user.email "bot@github.com"
+          
+          # Fetch the latest from GitHub so the bot is 'in sync'
+          git fetch origin main
+          git checkout main
+          
+          # Add the changes
           git add processed_filings.db
-          git commit -m "Update DB [skip ci]" || echo "No changes"
-          git push origin main --force  
+          
+          # Only commit if something actually changed
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update state [skip ci]" && git push origin main)
