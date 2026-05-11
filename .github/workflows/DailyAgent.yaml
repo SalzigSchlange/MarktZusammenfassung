@@ -31,5 +31,4 @@ jobs:
           git config --global user.email "bot@github.com"
           git add processed_filings.db
           git commit -m "Update DB [skip ci]" || echo "No changes"
-          git pull --rebase origin main  # <--- THIS IS THE MAGIC LINE
-          git push
+          git push origin main --force  
