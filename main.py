@@ -53,34 +53,21 @@ def main():
     
     print(f"Starting Global Sweep for {target_date}...")
 
-    # --- US (EDGAR) ---
+    # --- MARKET 1: US (EDGAR) ---
     try:
         us_filings = get_filings(filing_date=target_date, form=["10-K", "10-Q"])
         for f in us_filings:
             if is_new(f.accession_no):
                 print(f"Summarizing US: {f.company}...")
-                # FIXED: Removed .ticker and used f.company
                 summary = get_summary(f.markdown(), "US")
-                digest.append(f"US: {f.company}\n{summary}")
-                mark_done(f.accession_no)
+                
+                if "failed" not in summary.lower():
+                    digest.append(f"US: {f.company}\n{summary}")
+                    mark_done(f.accession_no)
+                    print("Sleeping 12s for Rate Limit...")
+                    time.sleep(12) # Slightly over 10s to be safe
     except Exception as e:
         print(f"EDGAR Error: {e}")
-
-    # --- S. KOREA (DART) ---
-    try:
-        kr_date = target_date.replace("-", "")
-        # FIXED: Corrected argument name to 'pblntf_ty'
-        kr_filings = dart.list(start=kr_date, end=kr_date, pblntf_ty='A') 
-        if kr_filings is not None and not kr_filings.empty:
-            for _, row in kr_filings.iterrows():
-                if is_new(row['rcept_no']):
-                    digest.append(f"KR: {row['corp_name']}\nAnnual Report Filed.")
-                    mark_done(row['rcept_no'])
-    except Exception as e:
-        print(f"DART Error: {e}")
-
-    # (Keep your Japan/Email logic the same)
-    # ...
 
     # --- MARKET 2: JAPAN (EDINET) ---
     try:
@@ -89,12 +76,35 @@ def main():
         for doc in jp_res.get('results', []):
             if doc.get('docTypeCode') in ['120', '140'] and is_new(doc['docID']):
                 print(f"Summarizing JP: {doc['filerName']}...")
-                # In POC, we summarize description; full text requires type=1 download
-                digest.append(f"JP: {doc['filerName']}\nForm: {doc['docDescription']}")
-                mark_done(doc['docID'])
+                # Even for simple descriptions, we use the AI, so we must sleep
+                summary = get_summary(doc['docDescription'], "Japan")
+                
+                if "failed" not in summary.lower():
+                    digest.append(f"JP: {doc['filerName']}\n{summary}")
+                    mark_done(doc['docID'])
+                    print("Sleeping 12s for Rate Limit...")
+                    time.sleep(12)
     except Exception as e:
         print(f"EDINET Error: {e}")
 
+    # --- MARKET 3: S. KOREA (DART) ---
+    try:
+        kr_date = target_date.replace("-", "")
+        kr_filings = dart.list(start=kr_date, end=kr_date, pblntf_ty='A') 
+        if kr_filings is not None and not kr_filings.empty:
+            for _, row in kr_filings.iterrows():
+                if is_new(row['rcept_no']):
+                    print(f"Summarizing KR: {row['corp_name']}...")
+                    # DART usually needs a separate call for text, but if you're summarizing:
+                    summary = get_summary(f"Report: {row['report_nm']}", "Korea")
+                    
+                    if "failed" not in summary.lower():
+                        digest.append(f"KR: {row['corp_name']}\n{summary}")
+                        mark_done(row['rcept_no'])
+                        print("Sleeping 12s for Rate Limit...")
+                        time.sleep(12)
+    except Exception as e:
+        print(f"DART Error: {e}")
 
     # --- 4. DELIVERY ---
     if digest:
