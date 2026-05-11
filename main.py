@@ -46,22 +46,41 @@ def get_summary(text, market):
 
 def main():
     init_db()
-    # Using Friday for the first successful test run
     target_date = "2026-05-08" 
     digest = []
+    # FORCE an entry so we can test the email even if the markets fail
+    digest.append("SYSTEM CHECK: The agent started the sweep.")
+    
     print(f"Starting Global Sweep for {target_date}...")
 
-    # --- MARKET 1: US (EDGAR) ---
+    # --- US (EDGAR) ---
     try:
         us_filings = get_filings(filing_date=target_date, form=["10-K", "10-Q"])
         for f in us_filings:
             if is_new(f.accession_no):
                 print(f"Summarizing US: {f.company}...")
-                digest.append(f"US: {f.company} ({f.ticker})\n{get_summary(f.markdown(), 'US')}")
+                # FIXED: Removed .ticker and used f.company
+                summary = get_summary(f.markdown(), "US")
+                digest.append(f"US: {f.company}\n{summary}")
                 mark_done(f.accession_no)
-                time.sleep(2) # Avoid rate limits
     except Exception as e:
         print(f"EDGAR Error: {e}")
+
+    # --- S. KOREA (DART) ---
+    try:
+        kr_date = target_date.replace("-", "")
+        # FIXED: Corrected argument name to 'pblntf_ty'
+        kr_filings = dart.list(start=kr_date, end=kr_date, pblntf_ty='A') 
+        if kr_filings is not None and not kr_filings.empty:
+            for _, row in kr_filings.iterrows():
+                if is_new(row['rcept_no']):
+                    digest.append(f"KR: {row['corp_name']}\nAnnual Report Filed.")
+                    mark_done(row['rcept_no'])
+    except Exception as e:
+        print(f"DART Error: {e}")
+
+    # (Keep your Japan/Email logic the same)
+    # ...
 
     # --- MARKET 2: JAPAN (EDINET) ---
     try:
@@ -76,18 +95,6 @@ def main():
     except Exception as e:
         print(f"EDINET Error: {e}")
 
-    # --- MARKET 3: S. KOREA (DART) ---
-    try:
-        kr_date = target_date.replace("-", "")
-        kr_filings = dart.list(start=kr_date, end=kr_date, pblntf_detail_ty='a001')
-        if kr_filings is not None and not kr_filings.empty:
-            for _, row in kr_filings.iterrows():
-                if is_new(row['rcept_no']):
-                    print(f"Summarizing KR: {row['corp_name']}...")
-                    digest.append(f"KR: {row['corp_name']}\nForm: {row['report_nm']}")
-                    mark_done(row['rcept_no'])
-    except Exception as e:
-        print(f"DART Error: {e}")
 
     # --- 4. DELIVERY ---
     if digest:
