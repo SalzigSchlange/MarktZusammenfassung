@@ -30,12 +30,17 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python main.py
 
-      - name: Commit State
+      - name: Commit and Push State
         run: |
           git config --global user.name "Agent-Bot"
           git config --global user.email "bot@github.com"
+          
+          # Stage the database
           git add processed_filings.db
-          # Pull changes you pushed locally, then put the new DB on top
-          git pull origin main --rebase
+          
+          # Commit only if there's a change
           git commit -m "Update state [skip ci]" || echo "No changes"
-          git push origin main
+          
+          # FORCE PUSH: This ignores the 'fetch first' error 
+          # and makes the Bot's database the new truth.
+          git push origin main --force
