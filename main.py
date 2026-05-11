@@ -38,7 +38,7 @@ def get_summary(text, market):
     prompt = f"""
     Summary of {market} financial report. 
     One paragraph in English. Focus on Revenue, Net Income, and Outlook.
-    IF SOURCE IS KOREAN: Include the original Korean snippet for numbers used.
+    If you spot anything unusual, mention it.
     TEXT: {text[:30000]}
     """
     try:
