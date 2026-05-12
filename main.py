@@ -36,7 +36,7 @@ def mark_done(filing_id):
 def get_summary(text, market):
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=f"Summarize this {market} filing in one English paragraph. Focus on Revenue, Net Income, and Outlook. If there is anything unusual also mention that: {text[:30000]}"
         )
         return response.text
